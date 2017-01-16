@@ -1,0 +1,18 @@
+s = x.dot(w)+b
+--> Ex = Es.dot(w.T)
+--> Ew = x.T.dot(Es)
+--> Eb = sum(Es,axis=0)
+
+s = x*w 
+--> Ex = Es*w
+--> Ew = Es*x
+ 
+
+s = x*scaler 
+--> Ex = Es*scaler
+--> Escaler = mean(Es*x)
+
+s = x*vecscaler 
+--> Ex = Es*vecscaler
+--> Escaler = np.array([np.mean(Es*x,axis=1)]).T
+ 
