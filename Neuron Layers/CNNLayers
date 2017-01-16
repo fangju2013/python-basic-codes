@@ -1,0 +1,290 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Nov 29 10:38:32 2016
+
+@author: changlue.she
+"""
+from __future__ import division
+from DeepLearning.activeFunctions import actfuncs
+ 
+import numpy as np
+#-----------------------------------------------------------------------------------------------------------------------------------------------
+class word2vecCovLayer():
+    def __init__(self,window,wordDim,outDim,actfunc='relu'):
+        self._actfunc = actfuncs.getActFunc(actfunc)
+        self.wordDim = wordDim
+        self.window = window
+        np.random.seed(123)
+        self.W = np.random.uniform(-0.001,0.001,size=(window,wordDim,outDim))
+        self.b = np.random.uniform(-0.001,0.001,size=(1,outDim))               
+     
+    def actNuerous(self,rawinputs):
+        self.rawinputs = rawinputs
+        hiddenInput = 0
+        for idx in range(self.window):
+            hiddenInput = self.rawinputs[idx].dot(self.W[idx])+hiddenInput            
+        hiddenOutput,self.hiddenGrad = self._actfunc(hiddenInput+self.b)                 
+        return hiddenOutput
+        
+    def updataError(self,hiddenOutputError,learning,l2):
+        deltaw = np.zeros(shape=self.W.shape)
+        inputError = np.zeros(shape=(self.window,hiddenOutputError.shape[0],self.wordDim)) 
+        hiddenCoreError = hiddenOutputError*self.hiddenGrad  
+        for idx in range(self.window)[::-1]:                            
+            inputError[idx] = hiddenCoreError.dot(self.W[idx].T)  
+            deltaw[idx] += self.rawinputs[idx].T.dot(hiddenCoreError) 
+        self.b -=  (np.sum(hiddenCoreError,axis=0)*learning+self.b*l2)
+        self.W -=  (deltaw*learning+self.W*l2)      
+        
+        return inputError   
+#-----------------------------------------------------------------------------------------------------------------------------------------------
+'''
+this class is much similar to the word2vecCovLayer. the difference is that this
+class take the whole sentence to map
+'''
+class NarrorCovLayer():
+    def __init__(self,outDim,filterNum,windowDim,wordDim):
+        self.outDim = outDim
+        self.windowDim = windowDim
+        self.wordDim = wordDim 
+        self.filterNum = filterNum
+        np.random.seed(123)       
+        self.W = np.random.uniform(-0.01,0.01,size=(filterNum,outDim,windowDim,wordDim))
+        self.b = np.random.uniform(-0.001,0.001,size=(filterNum,outDim))     
+        self.deltaW = np.zeros(shape=self.W.shape)
+        self.deltab = np.zeros(shape=self.b.shape)
+        
+    def actNuerous(self,sentMatrix):
+        self.sentMatrix = sentMatrix    
+        newSentMatrix = np.zeros(shape=(self.filterNum,sentMatrix.shape[1]-self.windowDim+1,self.outDim))  
+        for fn in range(self.filterNum):
+            for cn in range(self.sentMatrix.shape[0]):
+                for od in range(self.outDim):
+                    for widx in range(sentMatrix.shape[1]-self.windowDim+1):              
+                        newSentMatrix[fn][widx][od] +=  np.sum(sentMatrix[cn][widx:widx+self.windowDim]*self.W[fn][od])+self.b[fn][od]
+        return newSentMatrix    
+         
+    def updateError(self,maxtrixError):
+        newMaxtrixError = np.zeros(shape=(self.sentMatrix.shape))       
+        for fn in range(self.filterNum):
+            for cn in range(self.sentMatrix.shape[0]):
+                for od in range(self.outDim):
+                    for widx in range(maxtrixError.shape[1]):
+                        newMaxtrixError[cn][widx:widx+self.windowDim]+= maxtrixError[fn][widx][od]*self.W[fn][od]
+                        self.deltaW[fn][od] += maxtrixError[fn][widx][od]*self.sentMatrix[cn][widx:widx+self.windowDim]
+                        self.deltab[fn][od] += maxtrixError[fn][widx][od]       
+        return newMaxtrixError 
+    def updateWeight(self,learning,l2):
+        self.W -=  (self.deltaW*learning+self.W*l2)
+        self.b -=  (self.deltab*learning+self.b*l2)
+        self.deltaW = np.zeros(shape=self.W.shape)
+        self.deltab = np.zeros(shape=self.b.shape)
+#-----------------------------------------------------------------------------------------------------------------------------------------------
+'''
+this class is much similar to the NarrorCovLayer. the difference is that this
+class take a wide convolutional mapping
+'''
+class wideCovLayer():
+    def __init__(self,outDim,filterNum,windowDim,wordDim):
+        self.outDim = outDim
+        self.windowDim = windowDim
+        self.wordDim = wordDim 
+        self.filterNum = filterNum
+        np.random.seed(123)       
+        self.nullMatrix = np.zeros(shape=(self.windowDim-1,self.wordDim))    
+        self.W = np.random.uniform(-0.01,0.01,size=(filterNum,outDim,windowDim,wordDim))
+        self.b = np.random.uniform(-0.001,0.001,size=(filterNum,outDim))     
+        self.deltaW = np.zeros(shape=self.W.shape)
+        self.deltab = np.zeros(shape=self.b.shape)
+        
+    def actNuerous(self,sentMatrix):
+        self.sentMatrix = sentMatrix
+        self.wideSentMatrix = np.zeros(shape=(sentMatrix.shape[0],sentMatrix.shape[1]+2*self.windowDim-2,self.wordDim))
+        newSentMatrix = np.zeros(shape=(self.filterNum,sentMatrix.shape[1]+self.windowDim-1,self.outDim))  
+        for fn in range(self.filterNum):
+            for cn in range(self.sentMatrix.shape[0]):
+                self.wideSentMatrix[cn] = np.vstack((self.nullMatrix,sentMatrix[cn],self.nullMatrix))
+                for od in range(self.outDim):
+                    for widx in range(sentMatrix.shape[1]+self.windowDim-1):              
+                        newSentMatrix[fn][widx][od] +=  np.sum(self.wideSentMatrix[cn][widx:widx+self.windowDim]*self.W[fn][od])+self.b[fn][od]
+        return newSentMatrix    
+         
+    def updateError(self,maxtrixError):
+        wideMaxtrixError = np.zeros(shape=(self.wideSentMatrix.shape))  
+        newMaxtrixError = np.zeros(shape=(self.sentMatrix.shape))  
+        for fn in range(self.filterNum):
+            for cn in range(self.wideSentMatrix.shape[0]):
+                for od in range(self.outDim):
+                    for widx in range(maxtrixError.shape[1]):
+                        wideMaxtrixError[cn][widx:widx+self.windowDim]+= maxtrixError[fn][widx][od]*self.W[fn][od]
+                        self.deltaW[fn][od] += maxtrixError[fn][widx][od]*self.wideSentMatrix[cn][widx:widx+self.windowDim]
+                        self.deltab[fn][od] += maxtrixError[fn][widx][od]  
+        for cn in range(self.wideSentMatrix.shape[0]):
+            newMaxtrixError[cn] = wideMaxtrixError[cn][self.windowDim-1:maxtrixError.shape[1]]
+        return newMaxtrixError 
+    def updateWeight(self,learning,l2):
+        self.W -=  (self.deltaW*learning+self.W*l2)
+        self.b -=  (self.deltab*learning+self.b*l2)
+        self.deltaW = np.zeros(shape=self.W.shape)
+        self.deltab = np.zeros(shape=self.b.shape)
+#-----------------------------------------------------------------------------------------------------------------------------------------------
+'''
+this class is pool net which is used to fix the convolutional layers outs' length
+'''
+class DCnnPooLayer():
+    def __init__(self,K=3):
+        self.topK = K                
+    def actNuerous(self,sentMatrix,kf=1/3):
+        ##get the dimesion numbers
+        self.channelNum = sentMatrix.shape[0] 
+        self.wordNum = sentMatrix.shape[1] 
+        self.K = max(self.topK,int(kf*self.wordNum))
+        self.wordDim = sentMatrix.shape[2] 
+        ##initial a output matrix        
+        newSentMatrix = np.zeros(shape=(self.channelNum,self.K,self.wordDim))
+        ##initial the counterpart index matrix
+        self.indexMatrix = np.zeros(shape=newSentMatrix.shape,dtype=np.int)         
+        for cn in range(self.channelNum):             
+            for wd in range(self.wordDim):                
+                vec = sentMatrix[cn].T[wd]
+                index = vec.argsort()[::-1][:self.K]
+                index.sort()
+                self.indexMatrix[cn].T[wd] = index
+                newSentMatrix[cn].T[wd] = vec[index]
+        return newSentMatrix             
+ 
+    def updateError(self,maxtrixError):
+        ##initial new matrix error
+        newMaxtrixError = np.zeros(shape=(self.channelNum,self.wordNum,self.wordDim))
+        ##back propagation        
+        for cn in range(self.channelNum):                                 
+            for wd in range(self.wordDim):                
+                 newMaxtrixError[cn].T[wd][self.indexMatrix[cn].T[wd]] = maxtrixError[cn].T[wd]
+        return newMaxtrixError
+#-----------------------------------------------------------------------------------------------------------------------------------------------
+'''
+this class is pool net which is used to fix the convolutional layers outs' length
+to one
+'''
+ 
+class maxPooLayer():
+    def __init__(self):
+        pass           
+    def actNuerous(self,sentMatrix):
+        ##get the dimesion numbers
+        self.sentMatrix = sentMatrix
+        self.channelNum = sentMatrix.shape[0] 
+        self.wordNum = sentMatrix.shape[1] 
+        self.wordDim = sentMatrix.shape[2] 
+        ##initial a output matrix        
+        newSentMatrix = np.zeros(shape=(self.channelNum,1,self.wordDim))
+        ##initial the counterpart index matrix
+        self.indexMatrix = np.zeros(shape=newSentMatrix.shape,dtype=np.int)           
+        for cn in range(self.channelNum):                                          
+            newSentMatrix[cn][0] = sentMatrix[cn].max(axis=0) 
+            self.indexMatrix[cn][0] = sentMatrix[cn].argmax(axis=0)               
+        return newSentMatrix             
+ 
+    def updateError(self,maxtrixError):
+        ##initial new matrix error
+        newMaxtrixError = np.zeros(shape=(self.sentMatrix.shape))
+        ##back propagation        
+        for cn in range(self.channelNum):                
+            for wd in range(self.wordDim):                   
+                newMaxtrixError[cn][self.indexMatrix[cn][0][wd]][wd]= maxtrixError[cn][0][wd] 
+        return newMaxtrixError
+#-----------------------------------------------------------------------------------------------------------------------------------------------        
+class covActLayer():
+    def __init__(self,actfunc='tanh'):
+        self._actfunc = actfuncs.getActFunc(actfunc)      
+    def actNuerous(self,sentMatrix):
+        ##get the dimesion numbers
+        newSentMatrix,self.newSentMatrix_g = self._actfunc(sentMatrix)
+        return newSentMatrix             
+ 
+    def updateError(self,maxtrixError):
+        ##initial new matrix error
+        newMaxtrixError =  maxtrixError*self.newSentMatrix_g 
+        return newMaxtrixError
+#-----------------------------------------------------------------------------------------------------------------------------------------------        
+class covFullLayer():
+    def __init__(self,outDim,channelNum,inputDim,wordDim):
+        np.random.seed(123)       
+        self.W = np.random.uniform(-0.01,0.01,size=(outDim,channelNum,inputDim,wordDim))   
+        self.b = np.random.uniform(-0.01,0.01,size=(outDim))   
+        self.deltaW = np.zeros(shape=self.W.shape)
+        self.deltab = np.zeros(shape=self.b.shape) 
+    def actNuerous(self,sentMatrix):
+        ##get the dimesion numbers
+        self.sentMatrix = sentMatrix
+        newSentMatrix  = np.zeros(shape=(1,self.W.shape[0]))
+        for hd in range(self.W.shape[0]):
+            newSentMatrix.T[hd] = np.sum(self.sentMatrix*self.W[hd])+self.b[hd]                 
+        return newSentMatrix         
+ 
+    def updateError(self,maxtrixError):
+        ##initial new matrix error
+        newMaxtrixError = np.zeros(shape=self.sentMatrix.shape)
+        for hd in range(self.W.shape[0]):
+            newMaxtrixError += maxtrixError.T[hd]*self.W[hd]
+            self.deltaW[hd] += maxtrixError.T[hd]*self.sentMatrix 
+            self.deltab[hd] += maxtrixError.T[hd] 
+        return newMaxtrixError
+    def updateWeight(self,learning,l2):
+        self.W -=  (self.deltaW*learning+self.W*l2)
+        self.b -=  (self.deltab*learning+self.b*l2)
+        self.deltaW = np.zeros(shape=self.W.shape)
+        self.deltab = np.zeros(shape=self.b.shape)
+#-----------------------------------------------------------------------------------------------------------------------------------------------        
+class recCnn():
+    def __init__(self,wordDim,windowDim,actfunc):
+        self.windowDim = 5
+        self.wordDim = wordDim          
+        self._actfunc = actfuncs.getActFunc(actfunc)
+        self.W      = {}
+        self.b      = {}
+        self.deltaW = {}
+        self.deltab = {}
+        for n in range(2,self.windowDim+1):
+            self.W[n] = np.random.uniform(-0.01,0.01,size=(n,self.wordDim))
+            self.b[n] = np.random.uniform(-0.001,0.001,size=(self.wordDim))     
+            self.deltaW[n] = np.zeros(shape=(n,self.wordDim))
+            self.deltab[n] = np.zeros(shape=self.wordDim)        
+    def actNuerous(self,sentMatrix): 
+        self.outMatrix = []
+        while sentMatrix.shape[0]>1:
+            if sentMatrix.shape[0]-self.windowDim+1>0:
+                newSentMatrix = np.zeros(shape=(sentMatrix.shape[0]-self.windowDim+1,self.wordDim))       
+            else:
+                newSentMatrix = np.zeros(shape=(1,self.wordDim))       
+            for widx in range(newSentMatrix.shape[0]):     
+                wide = sentMatrix.shape[0]
+                if wide>self.windowDim:
+                    wide = self.windowDim
+                newSentMatrix[widx]= np.sum(sentMatrix[widx:widx+wide]*self.W[wide],axis=0)+self.b[wide]
+            newSentMatrix,newSentMatrix_g = self._actfunc(newSentMatrix)
+            self.outMatrix.append((sentMatrix,newSentMatrix_g))
+            sentMatrix = newSentMatrix
+        return newSentMatrix 
+    def updateError(self,maxtrixError):
+        for idx in range(len(self.outMatrix))[::-1]:
+            maxtrixError   *=self.outMatrix[idx][1]
+            sentMatrix      = self.outMatrix[idx][0]
+            newMaxtrixError = np.zeros(shape=(sentMatrix.shape)) 
+            if idx==len(self.outMatrix)-1:
+                wide        = newMaxtrixError.shape[0]     
+            else:
+                wide        = self.windowDim         
+            for widx in range(maxtrixError.shape[0]):
+                newMaxtrixError[widx:widx+wide]+= maxtrixError[widx]*self.W[wide] 
+                self.deltaW[wide]  += maxtrixError[widx]*sentMatrix[widx:widx+wide]
+                self.deltab[wide]  += maxtrixError[widx]   
+            maxtrixError = newMaxtrixError/np.mean(np.abs(newMaxtrixError))
+        return maxtrixError
+     
+    def updateWeight(self,learning,l2):
+        for n in range(2,self.windowDim+1):
+            self.W[n]     -= (self.deltaW[n]*learning+ self.W[n]*l2)
+            self.b[n]     -= (self.deltab[n]*learning+ self.b[n]*l2)
+            self.deltaW[n] = np.zeros(shape=(n,self.wordDim))
+            self.deltab[n] = np.zeros(shape=self.wordDim)
