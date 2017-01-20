@@ -1,12 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jan 20 16:59:47 2017
-
-@author: changlue.she
-"""
-
-# -*- coding: utf-8 -*-
-"""
 Created on Fri Jan 20 16:06:39 2017
 
 @author: changlue.she
