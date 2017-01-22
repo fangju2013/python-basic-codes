@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jan 20 16:06:39 2017
+Created on Fri Jan 20 16:59:47 2017
 
 @author: changlue.she
 """
@@ -11,7 +11,7 @@ import numpy as np
 from collections import Counter
 jieba.load_userdict(dir)  
 #---------------------------------------------------------------------------------------------------
-rawdata = pd.read_csv( dir,
+rawdata = pd.read_csv(dir,
                       header=0,encoding='gbk',usecols=[0,1,2,3,4,5,6 ])
 rawdata = rawdata.loc[rawdata[u'消息目标'] == u'机器人',:]    
 rawdata = rawdata.sort([u'会话ID'])
@@ -29,15 +29,15 @@ for idx,userID in enumerate(userIDs):
     if len(conversation)>6:
         conversation = [pair.word for pair in pseg.lcut(conversation) if pair.flag in ['n','ns','vs','nv']]       
         if len(conversation)>0:
-            if idx!=oldidx:
-                 oldidx = idx
+            if userID!=oldidx:
+                 oldidx = userID
                  ALL_term += add
                  tf = dict(Counter(add))
                  IDF_term+=tf.keys()
                  TF_term.append(tf)
                  add = conversation
             else:
-                 add+=conversation
+                 add+= conversation
 TF_term.pop(0)             
 wordFreq  = dict(Counter(ALL_term))
 allDocNum = len(TF_term)
@@ -64,5 +64,4 @@ tmp =[keywords,wordFreq]
 
 outfile = pd.DataFrame([keywords,wordFreq])
 outfile = outfile.T
-outfile.to_csv(dirs,encoding='gb18030',index=False )
-    
+outfile.to_excel(dirs,encoding='gb18030',index=False )
