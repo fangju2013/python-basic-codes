@@ -10,7 +10,7 @@ from DeepLearning.activeFunctions import actfuncs
 from DeepLearning.BasicNeuron import softmaxLayer
 import cPickle
 #-----------------------------------------------------------------------------------------------------------------------------------------------
-corps = cPickle.load(open("C:\\Users\\Administrator.NBJXUEJUN-LI\\Desktop\\project\\pick1214sec.pkl","rb"))
+corps = cPickle.load(open(dir,"rb")) # dir is the file directory 
 wordCorps = []
 for idx in corps:
     corp = []
